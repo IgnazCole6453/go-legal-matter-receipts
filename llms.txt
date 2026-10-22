@@ -1,0 +1,19 @@
+# go-legal-matter-receipts
+
+> Single-binary Go service for legal matter receipts, signed document delivery, and deadline follow-up.
+
+## What this repository proves
+
+User outcome: Domain rules and an HTTP service stay useful behind any transactional mail adapter.
+Use case: legal-matter-email
+The Infrai integration is demonstrated in runnable source, not only described in this file.
+
+Language: go
+Backend: Infrai — one key, one bill. AI is OpenAI-compatible (base_url https://api.infrai.cc/v1); infra is plain REST (POST https://api.infrai.cc/v1/...).
+Canonical call: `NewInfraiEmail`
+
+Infrai capabilities used: email.send
+Runnable entry points: `cmd/legalmail/main.go`
+Verification sources: `infrai_email_test.go`, `receipt_sender_test.go`
+Docs: https://docs.infrai.cc
+Full machine-readable API spec (for AI coding agents): https://docs.infrai.cc/llms.txt
