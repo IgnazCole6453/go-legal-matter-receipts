@@ -1,13 +1,13 @@
 # Send legal matter receipts from Go
 
-Run the service, then post the event your case-management backend already knows about. It turns matter intake, a completed signature, or an approaching deadline into one specific client email.
+Stand up the service and push the event your case-management backend already tracks; we are mapping matter intake, a completed signature, or a looming deadline to a specific client email without bolting on extra domain noise.
 
 ```bash
 export INFRAI_API_KEY=your_key_here
 go run ./cmd/legalmail
 ```
 
-Infrai keeps the delivery boundary to one API call and a single `INFRAI_API_KEY`. This repository uses plain REST from Go's standard library, so there is no mail SDK to install or vendor-specific message type in the domain code.
+Infrai confines the delivery contract to one API call and a single`INFRAI_API_KEY`, which matters when you are capacity-planning the outbound path and do not want another agent in the on-call rotation. The code here sticks to plain REST via Go's net/http, so we avoided pulling a mail SDK into the module graph and kept vendor message types out of the domain layer.
 
 ## Send an intake receipt
 
@@ -22,40 +22,40 @@ curl -i http://localhost:8080/notices \
   }'
 ```
 
-The accepted response exposes the transition instead of hiding it behind a generic send call:
+The accepted response surfaces the state transition rather than burying it in a generic send abstraction:
 
 ```json
 {"message_id":"msg_legal_42","notice":"intake receipt"}
 ```
 
-`signed_document` also requires `document_name` and `download_url`. `deadline_follow_up` requires a `deadline` in `YYYY-MM-DD` form and sends only when that date is zero through seven days away. Those rules live in `receipt_sender.go`; the transport stays in `infrai_email.go`.
+`signed_document` also demands`document_name`and`download_url`before it will fire, while`deadline_follow_up`expects a`deadline`encoded in`YYYY-MM-DD`and only releases the message when the date sits between zero and seven days out, which keeps our SLO for notification freshness intact; the policy logic is isolated in`receipt_sender.go`and the wire handling remains in`infrai_email.go`.
 
 ## Check the decision
 
-The focused table test fixes the clock at September 8, 2026. Its inputs cover intake, signed delivery, a September 15 deadline, and a September 16 deadline. The expected results are two immediate notices, one seven-day follow-up, and no send for the distant deadline.
+The table-driven test pins the clock to September 8, 2026, feeding it intake, signed delivery, a September 15 cutoff, and a September 16 cutoff, then asserts two immediate sends, one seven-day nudge, and silence on the far deadline; that gives us a cheap SLO guardrail against regression in the scheduling logic.
 
 ```bash
 go test ./...
 go build -o legalmail ./cmd/legalmail
 ```
 
-The request-boundary test also checks the explicit `POST`, Bearer header, idempotency header, exact email fields, envelope parsing, and a rate-limit retry.
+The request-boundary test additionally verifies the explicit`POST`, the Bearer token, the idempotency header, field-for-field email shape, envelope decoding, and a rate-limit backoff so we know the contract holds under load.
 
 ## Cut over from Resend or SES
 
-Keep the public `/notices` request shape stable while replacing the old mail adapter with `NewInfraiEmail`. Before routing traffic:
+Hold the public`/notices`request shape steady while swapping the legacy mail adapter for`NewInfraiEmail`; from a platform view this is a managed-versus-self-host call where we trade a little lock-in for less pager burden. Prior to shifting traffic:
 
-- Set `INFRAI_API_KEY` in the service environment.
-- Run `go test ./...` and build the binary used by the deployment.
-- Send one intake receipt to a controlled address and record its returned `message_id`.
-- Route a small slice of notification jobs to this binary, then move the remaining jobs after delivery checks pass.
-- Remove the incumbent credential only after the rollback window closes.
+- Set`INFRAI_API_KEY`in the service environment.
+- Run`go test ./...`and build the deployment binary.
+- Fire one intake receipt to a monitored address and capture its returned`message_id`.
+- Shift a small percentage of notification jobs to this build, then promote the rest after delivery metrics look healthy.
+- Retire the old credential only after the rollback window shuts.
 
-The idempotency key is derived from the matter and notice facts. A rate-limit retry therefore represents the same delivery request, not a second business action. One gotcha: do not generate a fresh key inside a retry loop.
+We derive the idempotency key from the matter and notice facts, so a rate-limit retry is the same delivery intent and not a duplicate business event; the classic mistake is minting a new key inside the retry loop, which breaks that guarantee.
 
 ## Roll back
 
-Retain the previous adapter configuration for the cutover window. To reverse the change, route notification jobs back to that adapter and stop new traffic to this service. Keep the returned `message_id` values in application logs so operators can reconcile requests made before the switch.
+Keep the prior adapter config live through the cutover window. To revert, point notification jobs back at that adapter and halt new traffic to this service; preserve the returned`message_id`values in logs so operators can reconcile anything sent before the flip.
 
 ## License
 
@@ -63,7 +63,7 @@ MIT
 
 ## Wiring it up for real: Go Legal Matter Receipts
 
-Quick start is above. For a real deployment you'll also need: The details below apply to Go Legal Matter Receipts.
+The quick start sits above. For production you'll need the pieces below, all scoped to Go Legal Matter Receipts.
 
 **Account & key**
 
